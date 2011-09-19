@@ -13,6 +13,7 @@ import tempfile
 import textwrap
 import upload
 import urllib2
+import projecthosting_upload
 
 try:
   import readline
@@ -593,6 +594,10 @@ def CmdUpload(args):
   if not cl.GetIssue():
     cl.SetIssue(issue)
   cl.SetPatchset(patchset)
+  try:
+    projecthosting_upload.upload(issue, patchset, subject, desc)
+  except:
+    projecthosting_upload.upload(issue, patchset)
 
 
 def CmdDCommit(args):
