@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import sys
+import re
 
 # API docs:
 #   http://code.google.com/p/support/wiki/IssueTrackerAPIPython
@@ -70,16 +71,22 @@ class PatchBot():
             labels = ["Patch-new"])
 
     def find_fix_issue_id(self, text):
-        splittext = text.split()
+        splittext = re.findall(r'\w+', text)
         issue_id = None
         # greedy search for the issue id
         for i, word in enumerate(splittext):
-            if word == "fix" or word == "issue":
+            if word in ["fix", "issue", "Fix", "Issue"]:
                 try:
-                    issue_id = int(splittext[i+1])
+                    maybe_number = splittext[i+1]
+                    if maybe_number[-1] == ")":
+                        maybe_number = maybe_number[:-1]
+                    issue_id = int(maybe_number)
                     break
                 except:
                     pass
+        if not issue_id:
+            maybe_number = re.findall(r'\([0-9]+\)', text)
+            issue_id = int(maybe_number[0][1:-1])
         return issue_id
 
     def upload(self, issue, patchset, subject="", description=""):
@@ -104,4 +111,11 @@ def upload(issue, patchset, subject="", description=""):
     else:
         print "Problem with the tracker issue"
 
+def test_find_number():
+    patchy = PatchBot()
+    print patchy.find_fix_issue_id("Fix 123")
+    print patchy.find_fix_issue_id("(Issue 123)")
+    print patchy.find_fix_issue_id("(123)")
+
+#test_find_number()
 
