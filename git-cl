@@ -569,6 +569,8 @@ def CmdUpload(args):
     upload_args.extend(['--issue', cl.GetIssue()])
     print ("This branch is associated with issue %s. "
            "Adding patch to that issue." % cl.GetIssue())
+    desc = cl.GetDescription()
+    subject = desc.splitlines()[0]
   else:
     # Construct a description for this change from the log.
     # We need to convert diff options to log options.
@@ -594,10 +596,7 @@ def CmdUpload(args):
   if not cl.GetIssue():
     cl.SetIssue(issue)
   cl.SetPatchset(patchset)
-  try:
-    projecthosting_upload.upload(issue, patchset, subject, desc)
-  except:
-    projecthosting_upload.upload(issue, patchset)
+  projecthosting_upload.upload(issue, patchset, subject, desc)
 
 
 def CmdDCommit(args):
