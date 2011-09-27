@@ -40,10 +40,14 @@ class PatchBot():
             self.username = login_data[0]
             self.password = login_data[1]
         except:
-            print "Error: you must create a %s" % (filename),
-            print "file containing your username and password"
-            print "(one on each line)"
-            sys.exit(1)
+            print "Could not find stored credentials"
+            print "  %(filename)s" % locals()
+            print "Please enter loging details manually"
+            print
+            import getpass
+            print "Username (google account name):"
+            self.username = raw_input().strip()
+            self.password = getpass.getpass()
 
     def login(self):
         try:
