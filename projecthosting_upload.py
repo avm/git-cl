@@ -2,6 +2,7 @@
 
 import sys
 import re
+import os.path
 
 # API docs:
 #   http://code.google.com/p/support/wiki/IssueTrackerAPIPython
@@ -31,8 +32,9 @@ class PatchBot():
         self.login()
 
     def get_credentials(self):
-        # TODO: handle this better
-        filename = "google.login"
+        # TODO: can we use the coderview cookie for this?
+        #filename = os.path.expanduser("~/.codereview_upload_cookies")
+        filename = os.path.expanduser("~/.lilypond-project-hosting-login")
         try:
             login_data = open(filename).readlines()
             self.username = login_data[0]
@@ -63,12 +65,25 @@ class PatchBot():
             labels = ["Type-Enhancement", "Patch-new"])
 
     def update_issue(self, issue_id, description):
-        return self.client.update_issue(
-            self.PROJECT_NAME,
-            issue_id,
-            self.username,
-            comment = description,
-            labels = ["Patch-new"])
+        try:
+            issue = self.client.update_issue(
+                self.PROJECT_NAME,
+                issue_id,
+                self.username,
+                comment = description,
+                labels = ["Patch-new"])
+        # TODO: this is a bit hack-ish, but I'm new to exceptions
+        except gdata.client.RequestError as err:
+            if err.body == "No permission to edit issue":
+                issue = self.client.update_issue(
+                    self.PROJECT_NAME,
+                    issue_id,
+                    self.username,
+                    comment = description)
+                return issue, "need to email -devel"
+            else:
+                issue = None, None
+        return issue, None
 
     def find_fix_issue_id(self, text):
         splittext = re.findall(r'\w+', text)
@@ -85,8 +100,11 @@ class PatchBot():
                 except:
                     pass
         if not issue_id:
-            maybe_number = re.findall(r'\([0-9]+\)', text)
-            issue_id = int(maybe_number[0][1:-1])
+            try:
+                maybe_number = re.findall(r'\([0-9]+\)', text)
+                issue_id = int(maybe_number[0][1:-1])
+            except:
+                pass
         return issue_id
 
     def upload(self, issue, patchset, subject="", description=""):
@@ -96,7 +114,11 @@ class PatchBot():
         # update or create?
         issue_id = self.find_fix_issue_id(subject+' '+description)
         if issue_id:
-            self.update_issue(issue_id, description)
+            issue, problem = self.update_issue(issue_id, description)
+            if problem == "need to email -devel":
+                print "WARNING: could not change issue labels;"
+                print "please email lilypond-devel with the issue",
+                print "number: %i" % issue_id
         else:
             self.create_issue(subject, description)
         return True
@@ -117,5 +139,8 @@ def test_find_number():
     print patchy.find_fix_issue_id("(Issue 123)")
     print patchy.find_fix_issue_id("(123)")
 
-#test_find_number()
+##test_find_number()
+#upload("rietveld_issue_id", None, "test issue", "blah")
+#upload("rietveld_issue_id", None, "test fix 1", "blah")
+
 
