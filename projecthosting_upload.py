@@ -86,7 +86,7 @@ class PatchBot():
                     comment = description)
                 return issue, "need to email -devel"
             else:
-                issue = None, None
+                issue = None, "need to email -devel"
         return issue, None
 
     def find_fix_issue_id(self, text):
