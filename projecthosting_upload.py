@@ -14,7 +14,12 @@ import gdata.data
 import atom.http_core
 import atom.core
 
-
+def string_is_number(case):
+    try :
+      int(case)
+      return True
+    except :
+      return False
 
 class PatchBot():
     client = gdata.projecthosting.client.ProjectHostingClient()
@@ -68,6 +73,11 @@ class PatchBot():
             self.username,
             labels = ["Type-Enhancement", "Patch-new"])
 
+    def generate_devel_error(self, issue_id) :
+        print "WARNING: could not change issue labels;"
+        print "please email lilypond-devel with the issue",
+        print "number: %i" % issue_id
+
     def update_issue(self, issue_id, description):
         try:
             issue = self.client.update_issue(
@@ -84,8 +94,10 @@ class PatchBot():
                     issue_id,
                     self.username,
                     comment = description)
+                self.generate_devel_error(issue)
                 return issue, "need to email -devel"
             else:
+                self.generate_devel_error(None)
                 issue = None, "need to email -devel"
         return issue, None
 
@@ -111,6 +123,14 @@ class PatchBot():
                 pass
         return issue_id
 
+    def query_user(self, issue = None) :
+        query_string1 = "We were not able to associate this patch with a google tracker issue." if issue == None else issue+" will not be used as a google tracker number."
+        print query_string1
+        info = raw_input("Please enter a valid google tracker issue number (or enter nothing to create a new issue): ")
+        while (info != '') and (not string_is_number(info)) :
+          info = raw_input("This is an invalid entry.  Please enter either an issue number (just digits, no spaces) or nothing to create an issue: ")
+        return info
+
     def upload(self, issue, patchset, subject="", description=""):
         if not subject:
             subject = "new patch"
@@ -118,13 +138,22 @@ class PatchBot():
         # update or create?
         issue_id = self.find_fix_issue_id(subject+' '+description)
         if issue_id:
-            issue, problem = self.update_issue(issue_id, description)
-            if problem == "need to email -devel":
-                print "WARNING: could not change issue labels;"
-                print "please email lilypond-devel with the issue",
-                print "number: %i" % issue_id
+            print "This has been identified with code.google.com issue "+issue_id+"."
+            correct = raw_input("Is this correct? [y/n (y)]")
+            if correct != 'n' :
+                issue, problem = self.update_issue(issue_id, description)
+            else :
+                issue_id = self.query_user(issue_id)
+                if issue_id :
+                    issue, problem = self.update_issue(issue_id, description)
+                else :
+                    self.create_issue(subject, description)
         else:
-            self.create_issue(subject, description)
+            issue_id = self.query_user(issue_id)
+            if issue_id :
+                issue, problem = self.update_issue(issue_id, description)
+            else :
+                self.create_issue(subject, description)
         return True
 
 
