@@ -124,12 +124,12 @@ class PatchBot():
         return issue_id
 
     def query_user(self, issue = None) :
-        query_string1 = "We were not able to associate this patch with a google tracker issue." if issue == None else issue+" will not be used as a google tracker number."
+        query_string1 = "We were not able to associate this patch with a google tracker issue." if issue == None else str(issue)+" will not be used as a google tracker number."
         print query_string1
         info = raw_input("Please enter a valid google tracker issue number (or enter nothing to create a new issue): ")
         while (info != '') and (not string_is_number(info)) :
           info = raw_input("This is an invalid entry.  Please enter either an issue number (just digits, no spaces) or nothing to create an issue: ")
-        return info
+        return int(info)
 
     def upload(self, issue, patchset, subject="", description=""):
         if not subject:
@@ -138,7 +138,7 @@ class PatchBot():
         # update or create?
         issue_id = self.find_fix_issue_id(subject+' '+description)
         if issue_id:
-            print "This has been identified with code.google.com issue "+issue_id+"."
+            print "This has been identified with code.google.com issue "+str(issue_id)+"."
             correct = raw_input("Is this correct? [y/n (y)]")
             if correct != 'n' :
                 issue, problem = self.update_issue(issue_id, description)
