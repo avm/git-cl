@@ -15,6 +15,12 @@ import upload
 import urllib2
 import projecthosting_upload
 
+import mimetypes
+mimetypes.add_type("text/x-script.scheme", ".scm")
+mimetypes.add_type("text/x-script.postscript", ".ps")
+mimetypes.add_type("text/x-script.texinfo", ".texi")
+
+
 try:
   import readline
 except ImportError:
