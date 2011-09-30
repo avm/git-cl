@@ -529,6 +529,9 @@ def CmdUpload(args):
                     help='reviewer email addresses')
   parser.add_option('--send-mail', action='store_true',
                     help='send email to reviewer immediately')
+  parser.add_option("-s", "--no_code_issue",
+    help="do not upload to code.google.com",
+    action="store_true", dest="no_code_issue")
   (options, args) = parser.parse_args(args)
 
   if RunGit(['diff-index', 'HEAD']):
@@ -596,7 +599,8 @@ def CmdUpload(args):
   if not cl.GetIssue():
     cl.SetIssue(issue)
   cl.SetPatchset(patchset)
-  projecthosting_upload.upload(issue, patchset, subject, desc)
+  if not options.no_code_issue:
+    projecthosting_upload.upload(issue, patchset, subject, desc)
 
 
 def CmdDCommit(args):
