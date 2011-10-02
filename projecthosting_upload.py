@@ -75,8 +75,12 @@ class PatchBot():
 
     def generate_devel_error(self, issue_id) :
         print "WARNING: could not change issue labels;"
-        print "please email lilypond-devel with the issue",
-        print "number: %i" % issue_id
+        if issue_id is None:
+            print "please email lilypond-devel with a general",
+            print "description of the problem"
+        else:
+            print "please email lilypond-devel with the issue",
+            print "number: %i" % issue_id
 
     def update_issue(self, issue_id, description):
         try:
@@ -94,7 +98,7 @@ class PatchBot():
                     issue_id,
                     self.username,
                     comment = description)
-                self.generate_devel_error(issue)
+                self.generate_devel_error(issue_id)
                 return issue, "need to email -devel"
             else:
                 self.generate_devel_error(None)
