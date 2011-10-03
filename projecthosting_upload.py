@@ -132,7 +132,9 @@ class PatchBot():
         print query_string1
         info = raw_input("Please enter a valid google tracker issue number (or enter nothing to create a new issue): ")
         while (info != '') and (not string_is_number(info)) :
-          info = raw_input("This is an invalid entry.  Please enter either an issue number (just digits, no spaces) or nothing to create an issue: ")
+            info = raw_input("This is an invalid entry.  Please enter either an issue number (just digits, no spaces) or nothing to create an issue: ")
+        if info == '' :
+            info = -1
         return int(info)
 
     def upload(self, issue, patchset, subject="", description=""):
@@ -148,13 +150,13 @@ class PatchBot():
                 issue, problem = self.update_issue(issue_id, description)
             else :
                 issue_id = self.query_user(issue_id)
-                if issue_id :
+                if issue_id > 0 :
                     issue, problem = self.update_issue(issue_id, description)
                 else :
                     self.create_issue(subject, description)
         else:
             issue_id = self.query_user(issue_id)
-            if issue_id :
+            if issue_id > 0 :
                 issue, problem = self.update_issue(issue_id, description)
             else :
                 self.create_issue(subject, description)
