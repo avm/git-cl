@@ -103,6 +103,7 @@ class PatchBot():
             else:
                 self.generate_devel_error(None)
                 issue = None, "need to email -devel"
+                print err
         return issue, None
 
     def find_fix_issue_id(self, text):
