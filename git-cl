@@ -15,6 +15,9 @@ import upload
 import urllib2
 import projecthosting_upload
 
+# mimetype exceptions: if you can't upload to rietveld, add the
+# relevant extension to this list.  The only important part is the
+# "text/x-script." bit; the stuff after the dot doesn't matter
 import mimetypes
 mimetypes.add_type("text/x-script.scheme", ".scm")
 mimetypes.add_type("text/x-script.postscript", ".ps")
