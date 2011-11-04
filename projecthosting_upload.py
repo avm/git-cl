@@ -47,7 +47,7 @@ class PatchBot():
         except:
             print "Could not find stored credentials"
             print "  %(filename)s" % locals()
-            print "Please enter loging details manually"
+            print "Please enter login details manually"
             print
             import getpass
             print "Username (google account name):"
