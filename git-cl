@@ -22,7 +22,7 @@ import mimetypes
 mimetypes.add_type("text/x-script.scheme", ".scm")
 mimetypes.add_type("text/x-script.postscript", ".ps")
 mimetypes.add_type("text/x-script.texinfo", ".texi")
-
+mimetypes.add_type("text/x-script.shell", ".sh")
 
 try:
   import readline
