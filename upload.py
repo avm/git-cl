@@ -1386,7 +1386,12 @@ def RealMain(argv, data=None):
     # Note: Fetching base files may become deprecated in future releases.
     base = vcs.GuessBase(options.download_base)
   else:
-    base = None
+    # Hardcoding our Lilypond URL.
+    # This we make all issues uploaded with this script to be displayed at:
+    # http://codereview.appspot.com/search?base=http://git.savannah.gnu.org/gitweb/?p=lilypond.git/trunk/
+    # all open issues:
+    # http://codereview.appspot.com/search?base=http://git.savannah.gnu.org/gitweb/?p=lilypond.git/trunk/&closed=3
+   base = "http://git.savannah.gnu.org/gitweb/?p=lilypond.git/trunk/"
   if not base and options.download_base:
     options.download_base = True
     logging.info("Enabled upload of base file")
