@@ -21,6 +21,7 @@ import projecthosting_upload
 import mimetypes
 mimetypes.add_type("text/x-script.scheme", ".scm")
 mimetypes.add_type("text/x-script.postscript", ".ps")
+mimetypes.add_type("text/x-script.tex", ".latex")
 mimetypes.add_type("text/x-script.texinfo", ".texi")
 mimetypes.add_type("text/x-script.shell", ".sh")
 
