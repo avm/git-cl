@@ -490,6 +490,11 @@ def CmdStatus(args):
       print 'no issue assigned.'
       return 0
     print cl.GetBranch()
+    if cl.GetIssueId():
+        print 'Issue ID:', cl.GetIssueId(), \
+            '(http://code.google.com/p/lilypond/issues/detail?id=%s)' % cl.GetIssueId()
+    else:
+        print 'Issue ID: None'
     print 'Issue number:', cl.GetIssue(), '(%s)' % cl.GetIssueURL()
     print 'Issue description:'
     print cl.GetDescription(pretty=True)
