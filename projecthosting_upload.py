@@ -74,8 +74,10 @@ class PatchBot():
             owner = self.username,
             status = "Started",
             labels = ["Type-Enhancement", "Patch-new"])
-        # return the issue number extracted from the URL
-        return int(re.search("[0-9]+", issue.id.text).group(0))
+        # get the issue number extracted from the URL
+        issue_id = int(re.search("[0-9]+", issue.id.text).group(0))
+        # update the issue to set the owner
+        return self.update_issue(issue_id, "")
 
     def generate_devel_error(self, issue_id) :
         print "WARNING: could not change issue labels;"
@@ -98,16 +100,20 @@ class PatchBot():
                 labels = ["Patch-new"])
         # TODO: this is a bit hack-ish, but I'm new to exceptions
         except gdata.client.RequestError as err:
-            if err.body == "No permission to edit issue":
+            if err.body == "No permission to edit issue" \
+                    and description != "":
                 issue = self.client.update_issue(
                     self.PROJECT_NAME,
                     issue_id,
                     self.username,
                     comment = description)
                 self.generate_devel_error(issue_id)
+                print err.body
+            elif err.body == "There were no updates performed.":
+                pass
             else:
-                self.generate_devel_error(None)
-                print err
+                self.generate_devel_error(issue_id)
+                print err.body
                 return None
         # return the issue number extracted from the URL
         return int(re.search("[0-9]+", issue.id.text).group(0))
@@ -163,14 +169,12 @@ class PatchBot():
                     issue_id = self.update_issue(issue_id, description)
                 else :
                     issue_id = self.create_issue(subject, description)
-                    issue_id = self.update_issue(issue_id, "")
         else:
             issue_id = self.query_user(issue_id)
             if issue_id > 0 :
                 issue_id = self.update_issue(issue_id, description)
             else :
                 issue_id = self.create_issue(subject, description)
-                issue_id = self.update_issue(issue_id, "")
         return issue_id
 
 
