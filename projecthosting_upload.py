@@ -162,12 +162,14 @@ class PatchBot():
                     issue_id = self.update_issue(issue_id, description)
                 else :
                     issue_id = self.create_issue(subject, description)
+                    issue_id = self.update_issue(issue_id, "")
         else:
             issue_id = self.query_user(issue_id)
             if issue_id > 0 :
                 issue_id = self.update_issue(issue_id, description)
             else :
                 issue_id = self.create_issue(subject, description)
+                issue_id = self.update_issue(issue_id, "")
         return issue_id
 
 
