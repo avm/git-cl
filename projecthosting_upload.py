@@ -137,7 +137,8 @@ class PatchBot():
     def query_user(self, issue = None) :
         query_string1 = "We were not able to associate this patch with a google tracker issue." if issue == None else str(issue)+" will not be used as a google tracker number."
         print query_string1
-        info = raw_input("Please enter a valid google tracker issue number (or enter nothing to create a new issue): ")
+        info = raw_input("Please enter a valid google tracker issue number\n"
+                         "(or enter nothing to create a new issue): ")
         while (info != '') and (not string_is_number(info)) :
             info = raw_input("This is an invalid entry.  Please enter either an issue number (just digits, no spaces) or nothing to create an issue: ")
         if info == '' :

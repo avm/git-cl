@@ -628,7 +628,7 @@ def CmdUpload(args):
       log_args = args[:]  # Hope for the best!
     desc = RunGit(['log', '--pretty=format:%s\n\n%b'] + log_args)
     initial_text = """# Enter a description of the change.
-# This will displayed on the codereview site.
+# This will be displayed on the codereview site.
 # The first line will also be used as the subject of the review."""
     desc = UserEditedLog(initial_text + '\n' + desc)
     if not desc:
