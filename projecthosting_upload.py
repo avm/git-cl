@@ -71,6 +71,8 @@ class PatchBot():
             "Patch: " + subject,
             description,
             self.username,
+            owner = self.username,
+            status = "Started",
             labels = ["Type-Enhancement", "Patch-new"])
 
     def generate_devel_error(self, issue_id) :
@@ -89,6 +91,8 @@ class PatchBot():
                 issue_id,
                 self.username,
                 comment = description,
+                owner = self.username,
+                status = "Started",
                 labels = ["Patch-new"])
         # TODO: this is a bit hack-ish, but I'm new to exceptions
         except gdata.client.RequestError as err:
