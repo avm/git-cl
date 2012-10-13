@@ -614,8 +614,8 @@ def CmdUpload(args):
     upload_args.extend(['--issue', cl.GetIssue()])
     print ("This branch is associated with issue %s. "
            "Adding patch to that issue." % cl.GetIssue())
-    desc = cl.GetDescription()
-    subject = desc.splitlines()[0]
+    prompt = "Message describing this patch set: "
+    desc = options.message or raw_input(prompt).strip()
   else:
     # Construct a description for this change from the log.
     # We need to convert diff options to log options.
@@ -634,9 +634,9 @@ def CmdUpload(args):
     if not desc:
       print "Description empty; aborting."
       return 1
-    subject = desc.splitlines()[0]
-    upload_args.extend(['--message', subject])
-    upload_args.extend(['--description', desc])
+  subject = desc.splitlines()[0]
+  upload_args.extend(['--message', subject])
+  upload_args.extend(['--description', desc])
   issue, patchset = upload.RealMain(['upload'] + upload_args + args)
   if not cl.GetIssue():
     cl.SetIssue(issue)
