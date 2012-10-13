@@ -218,6 +218,7 @@ class Changelist:
       self.branch = None
     self.upstream_branch = None
     self.has_issue = False
+    self.has_issueId = False
     self.issue = None
     self.has_description = False
     self.description = None
@@ -258,6 +259,18 @@ or verify this branch is set up to track another (via the --track argument to
 "git checkout -b ...").""")
 
     return self.upstream_branch
+
+  def GetIssueId(self):
+    """Returns the google code issue associated with this branch."""
+    if not self.has_issueId:
+      CheckForMigration()
+      issueId = RunGit(['config', self._IssueIdSetting()], error_ok=True).strip()
+      if issueId:
+        self.issueId = issueId
+      else:
+        self.issueId = None
+      self.has_issueId = True
+    return self.issueId
 
   def GetIssue(self):
     if not self.has_issue:
@@ -304,12 +317,21 @@ or verify this branch is set up to track another (via the --track argument to
       RunGit(['config', '--unset', self._PatchsetSetting()])
     self.has_patchset = False
 
+  def SetIssueId(self, issue):
+    """Set this branch's google code issue.  If issue=0, clears the issue."""
+    if issue:
+      RunGit(['config', self._IssueIdSetting(), str(issue)])
+    else:
+      RunGit(['config', '--unset', self._IssueIdSetting()])
+    self.has_issueId = False
+
   def SetIssue(self, issue):
     """Set this branch's issue.  If issue=0, clears the issue."""
     if issue:
       RunGit(['config', self._IssueSetting(), str(issue)])
     else:
       RunGit(['config', '--unset', self._IssueSetting()])
+      self.SetIssueId(0)
       self.SetPatchset(0)
     self.has_issue = False
 
@@ -328,6 +350,10 @@ or verify this branch is set up to track another (via the --track argument to
     data = [("description", self.description),]
     ctype, body = upload.EncodeMultipartFormData(data, [])
     rpc_server.Send('/' + self.GetIssue() + '/close', body, ctype)
+
+  def _IssueIdSetting(self):
+    """Return the git setting that stores the google code issue."""
+    return 'branch.%s.googlecodeissue' % self.GetBranch()
 
   def _IssueSetting(self):
     """Return the git setting that stores this change's issue."""
@@ -611,7 +637,9 @@ def CmdUpload(args):
     cl.SetIssue(issue)
   cl.SetPatchset(patchset)
   if not options.no_code_issue:
-    projecthosting_upload.upload(issue, patchset, subject, desc)
+    issueId = cl.GetIssueId()
+    issueId = projecthosting_upload.upload(issue, patchset, subject, desc, issueId)
+    cl.SetIssueId(issueId)
 
 
 def CmdDCommit(args):

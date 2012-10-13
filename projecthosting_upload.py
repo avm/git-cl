@@ -66,7 +66,7 @@ class PatchBot():
 
     def create_issue(self, subject, description):
         """Create an issue."""
-        return self.client.add_issue(
+        issue = self.client.add_issue(
             self.PROJECT_NAME,
             "Patch: " + subject,
             description,
@@ -74,6 +74,8 @@ class PatchBot():
             owner = self.username,
             status = "Started",
             labels = ["Type-Enhancement", "Patch-new"])
+        # return the issue number extracted from the URL
+        return int(re.search("[0-9]+", issue.id.text).group(0))
 
     def generate_devel_error(self, issue_id) :
         print "WARNING: could not change issue labels;"
@@ -103,12 +105,12 @@ class PatchBot():
                     self.username,
                     comment = description)
                 self.generate_devel_error(issue_id)
-                return issue, "need to email -devel"
             else:
                 self.generate_devel_error(None)
-                issue = None, "need to email -devel"
                 print err
-        return issue, None
+                return None
+        # return the issue number extracted from the URL
+        return int(re.search("[0-9]+", issue.id.text).group(0))
 
     def find_fix_issue_id(self, text):
         splittext = re.findall(r'\w+', text)
@@ -142,40 +144,42 @@ class PatchBot():
             info = -1
         return int(info)
 
-    def upload(self, issue, patchset, subject="", description=""):
+    def upload(self, issue, patchset, subject="", description="", issue_id=None):
         if not subject:
             subject = "new patch"
         description = description + "\n\n" + "http://codereview.appspot.com/" + issue
         # update or create?
-        issue_id = self.find_fix_issue_id(subject+' '+description)
+        if not issue_id:
+            issue_id = self.find_fix_issue_id(subject+' '+description)
         if issue_id:
             print "This has been identified with code.google.com issue "+str(issue_id)+"."
             correct = raw_input("Is this correct? [y/n (y)]")
             if correct != 'n' :
-                issue, problem = self.update_issue(issue_id, description)
+                issue_id = self.update_issue(issue_id, description)
             else :
                 issue_id = self.query_user(issue_id)
                 if issue_id > 0 :
-                    issue, problem = self.update_issue(issue_id, description)
+                    issue_id = self.update_issue(issue_id, description)
                 else :
-                    self.create_issue(subject, description)
+                    issue_id = self.create_issue(subject, description)
         else:
             issue_id = self.query_user(issue_id)
             if issue_id > 0 :
-                issue, problem = self.update_issue(issue_id, description)
+                issue_id = self.update_issue(issue_id, description)
             else :
-                self.create_issue(subject, description)
-        return True
+                issue_id = self.create_issue(subject, description)
+        return issue_id
 
 
 # hacky integration
-def upload(issue, patchset, subject="", description=""):
+def upload(issue, patchset, subject="", description="", issue_id=None):
     patchy = PatchBot()
-    status = patchy.upload(issue, patchset, subject, description)
+    status = patchy.upload(issue, patchset, subject, description, issue_id)
     if status:
-        print "Tracker issue done"
+        print "Tracker issue done: %s" % status
     else:
         print "Problem with the tracker issue"
+    return status
 
 def test_find_number():
     patchy = PatchBot()
