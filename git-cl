@@ -321,7 +321,7 @@ or verify this branch is set up to track another (via the --track argument to
     """Set this branch's google code issue.  If issue=0, clears the issue."""
     if issue:
       RunGit(['config', self._IssueIdSetting(), str(issue)])
-    else:
+    elif self.GetIssueId():
       RunGit(['config', '--unset', self._IssueIdSetting()])
     self.has_issueId = False
 

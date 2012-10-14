@@ -86,7 +86,7 @@ class PatchBot():
             print "description of the problem"
         else:
             print "please email lilypond-devel with the issue",
-            print "number: %i" % issue_id
+            print "number: %s" % issue_id
 
     def update_issue(self, issue_id, description):
         try:
