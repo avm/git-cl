@@ -100,23 +100,22 @@ class PatchBot():
                 labels = ["Patch-new"])
         # TODO: this is a bit hack-ish, but I'm new to exceptions
         except gdata.client.RequestError as err:
-            if err.body == "No permission to edit issue" \
-                    and description != "":
-                issue = self.client.update_issue(
-                    self.PROJECT_NAME,
-                    issue_id,
-                    self.username,
-                    comment = description)
-                self.generate_devel_error(issue_id)
-                print err.body
+            if err.body == "No permission to edit issue":
+                if description != "":
+                    issue = self.client.update_issue(
+                        self.PROJECT_NAME,
+                        issue_id,
+                        self.username,
+                        comment = description)
+                    self.generate_devel_error(issue_id)
+                    print err.body
             elif err.body == "There were no updates performed.":
                 pass
             else:
                 self.generate_devel_error(issue_id)
                 print err.body
                 return None
-        # return the issue number extracted from the URL
-        return int(re.search("[0-9]+", issue.id.text).group(0))
+        return issue_id
 
     def find_fix_issue_id(self, text):
         splittext = re.findall(r'\w+', text)
