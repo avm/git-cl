@@ -197,9 +197,15 @@ def CheckForMigration():
   did_migrate_check = True
 
 
-def IssueURL(issue):
-  """Get the URL for a particular issue."""
+def RietveldURL(issue):
+  """Returns the Rietveld URL for a particular issue."""
   return 'http://%s/%s' % (settings.GetServer(), issue)
+
+
+def TrackerURL(issue):
+  """Return the Tracker URL for a particular issue."""
+  # make the server/project customizable?
+  return 'http://code.google.com/p/lilypond/issues/detail?id=%s' % issue
 
 
 def ShortBranchName(branch):
@@ -217,9 +223,11 @@ class Changelist:
     else:
       self.branch = None
     self.upstream_branch = None
-    self.has_issue = False
-    self.issue = None
+    self.has_RietveldIssue = False
+    self.has_TrackerIssue = False
     self.has_description = False
+    self.RietveldIssue = None
+    self.TrackerIssue = None
     self.description = None
 
   def GetBranch(self):
@@ -228,6 +236,7 @@ class Changelist:
       self.branchref = RunGit(['symbolic-ref', 'HEAD']).strip()
       self.branch = ShortBranchName(self.branchref)
     return self.branch
+
   def GetBranchRef(self):
     """Returns the full branch name, e.g. 'refs/heads/master'."""
     self.GetBranch()  # Poke the lazy loader.
@@ -259,24 +268,39 @@ or verify this branch is set up to track another (via the --track argument to
 
     return self.upstream_branch
 
-  def GetIssue(self):
-    if not self.has_issue:
+  def GetTrackerIssue(self):
+    """Returns the Tracker issue associated with this branch."""
+    if not self.has_TrackerIssue:
       CheckForMigration()
-      issue = RunGit(['config', self._IssueSetting()], error_ok=True).strip()
+      issue = RunGit(['config', self._TrackerIssueSetting()], error_ok=True).strip()
       if issue:
-        self.issue = issue
+        self.TrackerIssue = issue
       else:
-        self.issue = None
-      self.has_issue = True
-    return self.issue
+        self.TrackerIssue = None
+      self.has_TrackerIssue = True
+    return self.TrackerIssue
 
-  def GetIssueURL(self):
-    return IssueURL(self.GetIssue())
+  def GetRietveldIssue(self):
+    if not self.has_RietveldIssue:
+      CheckForMigration()
+      issue = RunGit(['config', self._RietveldIssueSetting()], error_ok=True).strip()
+      if issue:
+        self.RietveldIssue = issue
+      else:
+        self.RietveldIssue = None
+      self.has_RietveldIssue = True
+    return self.RietveldIssue
+
+  def GetRietveldURL(self):
+    return RietveldURL(self.GetRietveldIssue())
+
+  def GetTrackerURL(self):
+    return TrackerURL(self.GetTrackerIssue())
 
   def GetDescription(self, pretty=False):
     if not self.has_description:
-      if self.GetIssue():
-        url = self.GetIssueURL() + '/description'
+      if self.GetRietveldIssue():
+        url = self.GetRietveldURL() + '/description'
         self.description = urllib2.urlopen(url).read().strip()
       self.has_description = True
     if pretty:
@@ -304,16 +328,26 @@ or verify this branch is set up to track another (via the --track argument to
       RunGit(['config', '--unset', self._PatchsetSetting()])
     self.has_patchset = False
 
-  def SetIssue(self, issue):
-    """Set this branch's issue.  If issue=0, clears the issue."""
+  def SetTrackerIssue(self, issue):
+    """Set this branch's Tracker issue.  If issue=0, clears the issue."""
     if issue:
-      RunGit(['config', self._IssueSetting(), str(issue)])
-    else:
-      RunGit(['config', '--unset', self._IssueSetting()])
-      self.SetPatchset(0)
-    self.has_issue = False
+      RunGit(['config', self._TrackerIssueSetting(), str(issue)])
+    elif self.GetTrackerIssue():
+      RunGit(['config', '--unset', self._TrackerIssueSetting()])
+    self.has_TrackerIssue = False
 
-  def CloseIssue(self):
+  def SetRietveldIssue(self, issue):
+    """Set this branch's Rietveld issue.  If issue=0, clears the issue."""
+    if issue:
+      RunGit(['config', self._RietveldIssueSetting(), str(issue)])
+    else:
+      RunGit(['config', '--unset', self._RietveldIssueSetting()])
+      self.SetTrackerIssue(0)
+      self.SetPatchset(0)
+    self.has_RietveldIssue = False
+
+  def CloseRietveldIssue(self):
+    """Close the Rietveld issue associated with this branch."""
     def GetUserCredentials():
       email = raw_input('Email: ').strip()
       password = getpass.getpass('Password for %s: ' % email)
@@ -327,14 +361,18 @@ or verify this branch is set up to track another (via the --track argument to
     # We pass an empty string for the data so it is a POST rather than a GET.
     data = [("description", self.description),]
     ctype, body = upload.EncodeMultipartFormData(data, [])
-    rpc_server.Send('/' + self.GetIssue() + '/close', body, ctype)
+    rpc_server.Send('/' + self.GetRietveldIssue() + '/close', body, ctype)
 
-  def _IssueSetting(self):
-    """Return the git setting that stores this change's issue."""
+  def _TrackerIssueSetting(self):
+    """Returns the git setting that stores the Tracker issue."""
+    return 'branch.%s.googlecodeissue' % self.GetBranch()
+
+  def _RietveldIssueSetting(self):
+    """Returns the git setting that stores the Rietveld issue."""
     return 'branch.%s.rietveldissue' % self.GetBranch()
 
   def _PatchsetSetting(self):
-    """Return the git setting that stores this change's most recent patchset."""
+    """Returns the git setting that stores the most recent Rietveld patchset."""
     return 'branch.%s.rietveldpatchset' % self.GetBranch()
 
 
@@ -447,38 +485,42 @@ def CmdStatus(args):
       print 'Branches associated with reviews:'
       for branch in sorted(branches.splitlines()):
         cl = Changelist(branchref=branch)
-        print "  %10s: %s" % (cl.GetBranch(), cl.GetIssue())
+        print "  %10s: %s" % (cl.GetBranch(), cl.GetRietveldIssue())
 
   cl = Changelist()
   if options.field:
     if options.field.startswith('desc'):
       print cl.GetDescription()
     elif options.field == 'id':
-      print cl.GetIssue()
+      print cl.GetRietveldIssue()
     elif options.field == 'url':
-      print cl.GetIssueURL()
+      print cl.GetRietveldURL()
   else:
     print
     print 'Current branch:',
-    if not cl.GetIssue():
+    if not cl.GetRietveldIssue():
       print 'no issue assigned.'
       return 0
     print cl.GetBranch()
-    print 'Issue number:', cl.GetIssue(), '(%s)' % cl.GetIssueURL()
+    if cl.GetTrackerIssue():
+        print 'Tracker issue:', cl.GetTrackerIssue(), '(%s)' % cl.GetTrackerURL()
+    else:
+        print 'Tracker issue: None'
+    print 'Rietveld issue:', cl.GetRietveldIssue(), '(%s)' % cl.GetRietveldURL()
     print 'Issue description:'
     print cl.GetDescription(pretty=True)
 
 
 def CmdIssue(args):
   parser = optparse.OptionParser(usage='git cl issue [issue_number]')
-  parser.description = ('Set or display the current code review issue. ' +
+  parser.description = ('Set or display the current Rietveld issue. ' +
                         'Pass issue number 0 to clear the current issue.')
   (options, args) = parser.parse_args(args)
 
   cl = Changelist()
   if len(args) > 0:
-    cl.SetIssue(int(args[0]))
-  print 'Issue number:', cl.GetIssue(), '(%s)' % cl.GetIssueURL()
+    cl.SetRietveldIssue(int(args[0]))
+  print 'Rietveld issue:', cl.GetRietveldIssue(), '(%s)' % cl.GetRietveldURL()
 
 
 def UserEditedLog(starting_text):
@@ -579,12 +621,12 @@ def CmdUpload(args):
     if not options.reviewers:
       DieWithError("Must specify reviewers to send email.")
     upload_args.append('--send_mail')
-  if cl.GetIssue():
-    upload_args.extend(['--issue', cl.GetIssue()])
+  if cl.GetRietveldIssue():
+    upload_args.extend(['--issue', cl.GetRietveldIssue()])
     print ("This branch is associated with issue %s. "
-           "Adding patch to that issue." % cl.GetIssue())
-    desc = cl.GetDescription()
-    subject = desc.splitlines()[0]
+           "Adding patch to that issue." % cl.GetRietveldIssue())
+    prompt = "Message describing this patch set: "
+    desc = options.message or raw_input(prompt).strip()
   else:
     # Construct a description for this change from the log.
     # We need to convert diff options to log options.
@@ -597,21 +639,23 @@ def CmdUpload(args):
       log_args = args[:]  # Hope for the best!
     desc = RunGit(['log', '--pretty=format:%s\n\n%b'] + log_args)
     initial_text = """# Enter a description of the change.
-# This will displayed on the codereview site.
+# This will be displayed on the codereview site.
 # The first line will also be used as the subject of the review."""
     desc = UserEditedLog(initial_text + '\n' + desc)
     if not desc:
       print "Description empty; aborting."
       return 1
-    subject = desc.splitlines()[0]
-    upload_args.extend(['--message', subject])
-    upload_args.extend(['--description', desc])
+  subject = desc.splitlines()[0]
+  upload_args.extend(['--message', subject])
+  upload_args.extend(['--description', desc])
   issue, patchset = upload.RealMain(['upload'] + upload_args + args)
-  if not cl.GetIssue():
-    cl.SetIssue(issue)
+  if not cl.GetRietveldIssue():
+    cl.SetRietveldIssue(issue)
   cl.SetPatchset(patchset)
   if not options.no_code_issue:
-    projecthosting_upload.upload(issue, patchset, subject, desc)
+    issueId = cl.GetTrackerIssue()
+    issueId = projecthosting_upload.upload(issue, patchset, subject, desc, issueId)
+    cl.SetTrackerIssue(issueId)
 
 
 def CmdDCommit(args):
@@ -671,7 +715,7 @@ def CmdDCommit(args):
     # It is important to have these checks early.  Not only for user
     # convenience, but also because the cl object then caches the correct values
     # of these fields even as we're juggling branches for setting up the commit.
-    if not cl.GetIssue():
+    if not cl.GetRietveldIssue():
       print 'Current issue unknown -- has this branch been uploaded?'
       print 'Use --tbr to commit without review.'
       return 1
@@ -681,10 +725,10 @@ def CmdDCommit(args):
 
     if not description:
       print 'No description set.'
-      print 'Visit %s/edit to set it.' % (cl.GetIssueURL())
+      print 'Visit %s/edit to set it.' % (cl.GetRietveldURL())
       return 1
 
-    description += "\n\nReview URL: %s" % cl.GetIssueURL()
+    description += "\n\nReview URL: %s" % cl.GetRietveldURL()
   else:
     # Submitting TBR.  Get a description now.
     if not description:
@@ -734,7 +778,7 @@ def CmdDCommit(args):
     RunGit(['checkout', '-q', cl.GetBranch()])
     RunGit(['branch', '-D', MERGE_BRANCH])
 
-  if cl.has_issue and output.find("Committed r") != -1:
+  if cl.has_RietveldIssue and output.find("Committed r") != -1:
     print "Closing issue (you may be prompted for your codereview password)..."
     viewvc_url = settings.GetViewVCUrl()
     if viewvc_url:
@@ -742,13 +786,13 @@ def CmdDCommit(args):
                             re.DOTALL).match(output).group(1)
       cl.description = (cl.description +
                         "\n\nCommitted: " + viewvc_url + revision)
-    cl.CloseIssue()
-    cl.SetIssue(0)
+    cl.CloseRietveldIssue()
+    cl.SetRietveldIssue(0)
 
 
 def CmdPatch(args):
   parser = optparse.OptionParser(usage=('git cl patch [options] '
-                                        '<patch url or issue id>'))
+                                        '<patch url or Rietveld issue ID>'))
   parser.add_option('-b', dest='newbranch',
                     help='create a new branch off trunk for the patch')
   parser.add_option('-f', action='store_true', dest='force',
@@ -778,7 +822,7 @@ def CmdPatch(args):
       issue = match.group(1)
       url = input
     else:
-      print "Must pass an issue ID or full URL for 'Download raw patch set'"
+      print "Must pass an Rietveld issue ID or full URL for 'Download raw patch set'"
       return 1
 
   if options.newbranch:
@@ -813,7 +857,7 @@ def CmdPatch(args):
   if not options.nocommit:
     RunGit(['commit', '-m', 'patch from issue %s' % issue])
     cl = Changelist()
-    cl.SetIssue(issue)
+    cl.SetRietveldIssue(issue)
     print "Committed patch."
   else:
     print "Patch applied to index."
@@ -855,7 +899,7 @@ def CmdUpstream(args):
 COMMANDS = [
   ('config',  'edit configuration for this tree',            CmdConfig),
   ('dcommit', 'commit the current changelist via git-svn',   CmdDCommit),
-  ('issue',   'show/set current branch\'s issue number',     CmdIssue),
+  ('issue',   'show/set current branch\'s Rietveld issue',     CmdIssue),
   ('patch',   'patch in a code review',                      CmdPatch),
   ('presubmit', 'run presubmit tests on the current changelist', CmdPresubmit),
   ('rebase',  'rebase current branch on top of svn repo',    CmdRebase),

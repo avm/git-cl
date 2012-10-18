@@ -66,12 +66,18 @@ class PatchBot():
 
     def create_issue(self, subject, description):
         """Create an issue."""
-        return self.client.add_issue(
+        issue = self.client.add_issue(
             self.PROJECT_NAME,
             "Patch: " + subject,
             description,
             self.username,
+            owner = self.username,
+            status = "Started",
             labels = ["Type-Enhancement", "Patch-new"])
+        # get the issue number extracted from the URL
+        issue_id = int(re.search("[0-9]+", issue.id.text).group(0))
+        # update the issue to set the owner
+        return self.update_issue(issue_id, "")
 
     def generate_devel_error(self, issue_id) :
         print "WARNING: could not change issue labels;"
@@ -80,7 +86,7 @@ class PatchBot():
             print "description of the problem"
         else:
             print "please email lilypond-devel with the issue",
-            print "number: %i" % issue_id
+            print "number: %s" % issue_id
 
     def update_issue(self, issue_id, description):
         try:
@@ -89,22 +95,27 @@ class PatchBot():
                 issue_id,
                 self.username,
                 comment = description,
+                owner = self.username,
+                status = "Started",
                 labels = ["Patch-new"])
         # TODO: this is a bit hack-ish, but I'm new to exceptions
         except gdata.client.RequestError as err:
             if err.body == "No permission to edit issue":
-                issue = self.client.update_issue(
-                    self.PROJECT_NAME,
-                    issue_id,
-                    self.username,
-                    comment = description)
-                self.generate_devel_error(issue_id)
-                return issue, "need to email -devel"
+                if description != "":
+                    issue = self.client.update_issue(
+                        self.PROJECT_NAME,
+                        issue_id,
+                        self.username,
+                        comment = description)
+                    self.generate_devel_error(issue_id)
+                    print err.body
+            elif err.body == "There were no updates performed.":
+                pass
             else:
-                self.generate_devel_error(None)
-                issue = None, "need to email -devel"
-                print err
-        return issue, None
+                self.generate_devel_error(issue_id)
+                print err.body
+                return None
+        return issue_id
 
     def find_fix_issue_id(self, text):
         splittext = re.findall(r'\w+', text)
@@ -131,47 +142,50 @@ class PatchBot():
     def query_user(self, issue = None) :
         query_string1 = "We were not able to associate this patch with a google tracker issue." if issue == None else str(issue)+" will not be used as a google tracker number."
         print query_string1
-        info = raw_input("Please enter a valid google tracker issue number (or enter nothing to create a new issue): ")
+        info = raw_input("Please enter a valid google tracker issue number\n"
+                         "(or enter nothing to create a new issue): ")
         while (info != '') and (not string_is_number(info)) :
             info = raw_input("This is an invalid entry.  Please enter either an issue number (just digits, no spaces) or nothing to create an issue: ")
         if info == '' :
             info = -1
         return int(info)
 
-    def upload(self, issue, patchset, subject="", description=""):
+    def upload(self, issue, patchset, subject="", description="", issue_id=None):
         if not subject:
             subject = "new patch"
         description = description + "\n\n" + "http://codereview.appspot.com/" + issue
         # update or create?
-        issue_id = self.find_fix_issue_id(subject+' '+description)
+        if not issue_id:
+            issue_id = self.find_fix_issue_id(subject+' '+description)
         if issue_id:
             print "This has been identified with code.google.com issue "+str(issue_id)+"."
             correct = raw_input("Is this correct? [y/n (y)]")
             if correct != 'n' :
-                issue, problem = self.update_issue(issue_id, description)
+                issue_id = self.update_issue(issue_id, description)
             else :
                 issue_id = self.query_user(issue_id)
                 if issue_id > 0 :
-                    issue, problem = self.update_issue(issue_id, description)
+                    issue_id = self.update_issue(issue_id, description)
                 else :
-                    self.create_issue(subject, description)
+                    issue_id = self.create_issue(subject, description)
         else:
             issue_id = self.query_user(issue_id)
             if issue_id > 0 :
-                issue, problem = self.update_issue(issue_id, description)
+                issue_id = self.update_issue(issue_id, description)
             else :
-                self.create_issue(subject, description)
-        return True
+                issue_id = self.create_issue(subject, description)
+        return issue_id
 
 
 # hacky integration
-def upload(issue, patchset, subject="", description=""):
+def upload(issue, patchset, subject="", description="", issue_id=None):
     patchy = PatchBot()
-    status = patchy.upload(issue, patchset, subject, description)
+    status = patchy.upload(issue, patchset, subject, description, issue_id)
     if status:
-        print "Tracker issue done"
+        print "Tracker issue done: %s" % status
     else:
         print "Problem with the tracker issue"
+    return status
 
 def test_find_number():
     patchy = PatchBot()
