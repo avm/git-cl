@@ -646,8 +646,8 @@ def CmdUpload(args):
       print "Description empty; aborting."
       return 1
   subject = desc.splitlines()[0]
-  upload_args.extend(['--message', subject])
-  upload_args.extend(['--description', desc])
+  upload_args.extend(['--title', subject])
+  upload_args.extend(['--message', desc])
   issue, patchset = upload.RealMain(['upload'] + upload_args + args)
   if not cl.GetRietveldIssue():
     cl.SetRietveldIssue(issue)
