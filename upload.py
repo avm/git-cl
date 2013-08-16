@@ -1386,8 +1386,8 @@ class GitVCS(VersionControlSystem):
     else:
       status = "M"
 
-    is_binary = self.IsBinaryData(base_content)
     is_image = self.IsImage(filename)
+    is_binary = is_image or self.IsBinaryData(base_content)
 
     # Grab the before/after content if we need it.
     # Grab the base content if we don't have it already.
