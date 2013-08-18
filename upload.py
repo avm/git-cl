@@ -1333,7 +1333,7 @@ class GitVCS(VersionControlSystem):
     # append a diff (with rename detection), without deletes.
     cmd = [
         "git", "diff", "--no-color", "--no-ext-diff", "--full-index",
-        "--ignore-submodules",
+        "--ignore-submodules", "--binary",
     ]
     diff = RunShell(
         cmd + ["--no-renames", "--diff-filter=D"] + extra_args,
@@ -1386,8 +1386,8 @@ class GitVCS(VersionControlSystem):
     else:
       status = "M"
 
-    is_binary = self.IsBinaryData(base_content)
     is_image = self.IsImage(filename)
+    is_binary = is_image or self.IsBinaryData(base_content)
 
     # Grab the before/after content if we need it.
     # Grab the base content if we don't have it already.

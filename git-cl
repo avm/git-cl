@@ -199,7 +199,7 @@ def CheckForMigration():
 
 def RietveldURL(issue):
   """Returns the Rietveld URL for a particular issue."""
-  return 'http://%s/%s' % (settings.GetServer(), issue)
+  return 'https://%s/%s' % (settings.GetServer(), issue)
 
 
 def TrackerURL(issue):
@@ -809,18 +809,18 @@ def CmdPatch(args):
   if re.match(r'\d+', input):
     # Input is an issue id.  Figure out the URL.
     issue = input
-    fetch = "curl --silent http://%s/%s" % (settings.GetServer(), issue)
+    fetch = "curl --silent https://%s/%s" % (settings.GetServer(), issue)
     grep = "grep -E -o '/download/issue[0-9]+_[0-9]+.diff'"
     pipe = subprocess.Popen("%s | %s" % (fetch, grep), shell=True,
                             stdout=subprocess.PIPE)
     path = pipe.stdout.read().strip()
-    url = 'http://%s%s' % (settings.GetServer(), path)
+    url = 'https://%s%s' % (settings.GetServer(), path)
   else:
     # Assume it's a URL to the patch.
-    match = re.match(r'http://.*?/issue(\d+)_\d+.diff', input)
+    match = re.match(r'https?://.*?/issue(\d+)_\d+.diff', input)
     if match:
       issue = match.group(1)
-      url = input
+      url = input.replace("http:", "https:")
     else:
       print "Must pass an Rietveld issue ID or full URL for 'Download raw patch set'"
       return 1
