@@ -815,6 +815,16 @@ def CmdPatch(args):
                             stdout=subprocess.PIPE)
     path = pipe.stdout.read().strip()
     url = 'https://%s%s' % (settings.GetServer(), path)
+    if len(path) == 0:
+        # There is no patch to download (patch may be too large, see
+        # http://code.google.com/p/rietveld/issues/detail?id=196).
+        # Try to download individual patches for each file instead,
+        # and concatenate them to obtain the complete patch.
+        grep = "grep -E -o '/download/issue[0-9]+_[0-9]+_[0-9]+.diff'"
+        pipe = subprocess.Popen("%s | %s" % (fetch, grep), shell=True,
+                                stdout=subprocess.PIPE)
+        paths = pipe.stdout.read().strip().split("\n")
+        url = 'https://%s{%s}' % (settings.GetServer(), ",".join(paths))
   else:
     # Assume it's a URL to the patch.
     match = re.match(r'https?://.*?/issue(\d+)_\d+.diff', input)
