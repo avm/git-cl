@@ -13,6 +13,7 @@ import textwrap
 import upload
 import urllib2
 import projecthosting_upload
+import cl_settings
 
 # mimetype exceptions: if you can't upload to rietveld, add the
 # relevant extension to this list.  The only important part is the
@@ -35,345 +36,13 @@ DEFAULT_SERVER = 'codereview.appspot.com'
 PREDCOMMIT_HOOK = '.git/hooks/pre-cl-dcommit'
 PREUPLOAD_HOOK = '.git/hooks/pre-cl-upload'
 
-def DieWithError(message):
-  print >>sys.stderr, message
-  sys.exit(1)
-
-
-def RunCommand(cmd, error_ok=False, error_message=None, exit_code=False,
-               redirect_stdout=True):
-  # Useful for debugging:
-  # print >>sys.stderr, ' '.join(cmd)
-  if redirect_stdout:
-    stdout = subprocess.PIPE
-  else:
-    stdout = None
-  proc = subprocess.Popen(cmd, stdout=stdout)
-  output = proc.communicate()[0]
-  if exit_code:
-    return proc.returncode
-  if not error_ok and proc.returncode != 0:
-    DieWithError('Command "%s" failed.\n' % (' '.join(cmd)) +
-                 (error_message or output))
-  return output
-
-
-def RunGit(args, **kwargs):
-  cmd = ['git'] + args
-  return RunCommand(cmd, **kwargs)
-
-
-class Settings:
-  def __init__(self):
-    self.server = None
-    self.cc = None
-    self.root = None
-    self.is_git_svn = None
-    self.svn_branch = None
-    self.tree_status_url = None
-    self.viewvc_url = None
-
-  def GetServer(self, error_ok=False):
-    if not self.server:
-      if not error_ok:
-        error_message = ('You must configure your review setup by running '
-                         '"git cl config".')
-        self.server = self._GetConfig('rietveld.server',
-                                      error_message=error_message)
-      else:
-        self.server = self._GetConfig('rietveld.server', error_ok=True)
-    return self.server
-
-  def GetCCList(self):
-    if self.cc is None:
-      self.cc = self._GetConfig('rietveld.cc', error_ok=True)
-    return self.cc
-
-  def GetRoot(self):
-    if not self.root:
-      self.root = os.path.abspath(RunGit(['rev-parse', '--show-cdup']).strip())
-    return self.root
-
-  def GetIsGitSvn(self):
-    """Return true if this repo looks like it's using git-svn."""
-    if self.is_git_svn is None:
-      # If you have any "svn-remote.*" config keys, we think you're using svn.
-      self.is_git_svn = RunGit(['config', '--get-regexp', r'^svn-remote\.'],
-                               exit_code=True) == 0
-    return self.is_git_svn
-
-  def GetSVNBranch(self):
-    if self.svn_branch is None:
-      if not self.GetIsGitSvn():
-        raise "Repo doesn't appear to be a git-svn repo."
-
-      # Try to figure out which remote branch we're based on.
-      # Strategy:
-      # 1) find all git-svn branches and note their svn URLs.
-      # 2) iterate through our branch history and match up the URLs.
-
-      # regexp matching the git-svn line that contains the URL.
-      git_svn_re = re.compile(r'^\s*git-svn-id: (\S+)@', re.MULTILINE)
-
-      # Get the refname and svn url for all refs/remotes/*.
-      remotes = RunGit(['for-each-ref', '--format=%(refname)',
-                        'refs/remotes']).splitlines()
-      svn_refs = {}
-      for ref in remotes:
-        match = git_svn_re.search(RunGit(['cat-file', '-p', ref]))
-        if match:
-          svn_refs[match.group(1)] = ref
-
-      if len(svn_refs) == 1:
-        # Only one svn branch exists -- seems like a good candidate.
-        self.svn_branch = svn_refs.values()[0]
-      elif len(svn_refs) > 1:
-        # We have more than one remote branch available.  We don't
-        # want to go through all of history, so read a line from the
-        # pipe at a time.
-        # The -100 is an arbitrary limit so we don't search forever.
-        cmd = ['git', 'log', '-100', '--pretty=medium']
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-        for line in proc.stdout:
-          match = git_svn_re.match(line)
-          if match:
-            url = match.group(1)
-            if url in svn_refs:
-              self.svn_branch = svn_refs[url]
-              proc.stdout.close()  # Cut pipe.
-              break
-
-      if not self.svn_branch:
-        raise "Can't guess svn branch -- try specifying it on the command line"
-
-    return self.svn_branch
-
-  def GetTreeStatusUrl(self, error_ok=False):
-    if not self.tree_status_url:
-      error_message = ('You must configure your tree status URL by running '
-                       '"git cl config".')
-      self.tree_status_url = self._GetConfig('rietveld.tree-status-url',
-                                             error_ok=error_ok,
-                                             error_message=error_message)
-    return self.tree_status_url
-
-  def GetViewVCUrl(self):
-    if not self.viewvc_url:
-      self.viewvc_url = self._GetConfig('rietveld.viewvc-url', error_ok=True)
-    return self.viewvc_url
-
-  def _GetConfig(self, param, **kwargs):
-    return RunGit(['config', param], **kwargs).strip()
-
-
-settings = Settings()
-
-
-did_migrate_check = False
-def CheckForMigration():
-  """Migrate from the old issue format, if found.
-
-  We used to store the branch<->issue mapping in a file in .git, but it's
-  better to store it in the .git/config, since deleting a branch deletes that
-  branch's entry there.
-  """
-
-  # Don't run more than once.
-  global did_migrate_check
-  if did_migrate_check:
-    return
-
-  gitdir = RunGit(['rev-parse', '--git-dir']).strip()
-  storepath = os.path.join(gitdir, 'cl-mapping')
-  if os.path.exists(storepath):
-    print "old-style git-cl mapping file (%s) found; migrating." % storepath
-    store = open(storepath, 'r')
-    for line in store:
-      branch, issue = line.strip().split()
-      RunGit(['config', 'branch.%s.rietveldissue' % ShortBranchName(branch),
-              issue])
-    store.close()
-    os.remove(storepath)
-  did_migrate_check = True
-
-
-def RietveldURL(issue):
-  """Returns the Rietveld URL for a particular issue."""
-  return 'https://%s/%s' % (settings.GetServer(), issue)
+settings = cl_settings.Settings()
 
 
 def TrackerURL(issue):
   """Return the Tracker URL for a particular issue."""
   # make the server/project customizable?
   return 'http://code.google.com/p/lilypond/issues/detail?id=%s' % issue
-
-
-def ShortBranchName(branch):
-  """Convert a name like 'refs/heads/foo' to just 'foo'."""
-  return branch.replace('refs/heads/', '')
-
-
-class Changelist:
-  def __init__(self, branchref=None):
-    # Poke settings so we get the "configure your server" message if necessary.
-    settings.GetServer()
-    self.branchref = branchref
-    if self.branchref:
-      self.branch = ShortBranchName(self.branchref)
-    else:
-      self.branch = None
-    self.upstream_branch = None
-    self.has_RietveldIssue = False
-    self.has_TrackerIssue = False
-    self.has_description = False
-    self.RietveldIssue = None
-    self.TrackerIssue = None
-    self.description = None
-
-  def GetBranch(self):
-    """Returns the short branch name, e.g. 'master'."""
-    if not self.branch:
-      self.branchref = RunGit(['symbolic-ref', 'HEAD']).strip()
-      self.branch = ShortBranchName(self.branchref)
-    return self.branch
-
-  def GetBranchRef(self):
-    """Returns the full branch name, e.g. 'refs/heads/master'."""
-    self.GetBranch()  # Poke the lazy loader.
-    return self.branchref
-
-  def GetUpstreamBranch(self):
-    if self.upstream_branch is None:
-      branch = self.GetBranch()
-      upstream_branch = RunGit(['config', 'branch.%s.merge' % branch],
-                               error_ok=True).strip()
-      if upstream_branch:
-        remote = RunGit(['config', 'branch.%s.remote' % branch]).strip()
-        # We have remote=origin and branch=refs/heads/foobar; convert to
-        # refs/remotes/origin/foobar.
-        self.upstream_branch = upstream_branch.replace('heads',
-                                                       'remotes/' + remote)
-
-      if not self.upstream_branch:
-        # Fall back on trying a git-svn upstream branch.
-        if settings.GetIsGitSvn():
-          self.upstream_branch = settings.GetSVNBranch()
-
-      if not self.upstream_branch:
-        DieWithError("""Unable to determine default branch to diff against.
-Either pass complete "git diff"-style arguments, like
-  git cl upload origin/master
-or verify this branch is set up to track another (via the --track argument to
-"git checkout -b ...").""")
-
-    return self.upstream_branch
-
-  def GetTrackerIssue(self):
-    """Returns the Tracker issue associated with this branch."""
-    if not self.has_TrackerIssue:
-      CheckForMigration()
-      issue = RunGit(['config', self._TrackerIssueSetting()], error_ok=True).strip()
-      if issue:
-        self.TrackerIssue = issue
-      else:
-        self.TrackerIssue = None
-      self.has_TrackerIssue = True
-    return self.TrackerIssue
-
-  def GetRietveldIssue(self):
-    if not self.has_RietveldIssue:
-      CheckForMigration()
-      issue = RunGit(['config', self._RietveldIssueSetting()], error_ok=True).strip()
-      if issue:
-        self.RietveldIssue = issue
-      else:
-        self.RietveldIssue = None
-      self.has_RietveldIssue = True
-    return self.RietveldIssue
-
-  def GetRietveldURL(self):
-    return RietveldURL(self.GetRietveldIssue())
-
-  def GetTrackerURL(self):
-    return TrackerURL(self.GetTrackerIssue())
-
-  def GetDescription(self, pretty=False):
-    if not self.has_description:
-      if self.GetRietveldIssue():
-        url = self.GetRietveldURL() + '/description'
-        self.description = urllib2.urlopen(url).read().strip()
-      self.has_description = True
-    if pretty:
-      wrapper = textwrap.TextWrapper()
-      wrapper.initial_indent = wrapper.subsequent_indent = '  '
-      return wrapper.fill(self.description)
-    return self.description
-
-  def GetPatchset(self):
-    if not self.has_patchset:
-      patchset = RunGit(['config', self._PatchsetSetting()],
-                        error_ok=True).strip()
-      if patchset:
-        self.patchset = patchset
-      else:
-        self.patchset = None
-      self.has_patchset = True
-    return self.patchset
-
-  def SetPatchset(self, patchset):
-    """Set this branch's patchset.  If patchset=0, clears the patchset."""
-    if patchset:
-      RunGit(['config', self._PatchsetSetting(), str(patchset)])
-    else:
-      RunGit(['config', '--unset', self._PatchsetSetting()])
-    self.has_patchset = False
-
-  def SetTrackerIssue(self, issue):
-    """Set this branch's Tracker issue.  If issue=0, clears the issue."""
-    if issue:
-      RunGit(['config', self._TrackerIssueSetting(), str(issue)])
-    elif self.GetTrackerIssue():
-      RunGit(['config', '--unset', self._TrackerIssueSetting()])
-    self.has_TrackerIssue = False
-
-  def SetRietveldIssue(self, issue):
-    """Set this branch's Rietveld issue.  If issue=0, clears the issue."""
-    if issue:
-      RunGit(['config', self._RietveldIssueSetting(), str(issue)])
-    else:
-      RunGit(['config', '--unset', self._RietveldIssueSetting()])
-      self.SetTrackerIssue(0)
-      self.SetPatchset(0)
-    self.has_RietveldIssue = False
-
-  def CloseRietveldIssue(self):
-    """Close the Rietveld issue associated with this branch."""
-    def GetUserCredentials():
-      email = raw_input('Email: ').strip()
-      password = getpass.getpass('Password for %s: ' % email)
-      return email, password
-
-    rpc_server = upload.HttpRpcServer(settings.GetServer(),
-                                      GetUserCredentials,
-                                      host_override=settings.GetServer(),
-                                      save_cookies=True)
-    # You cannot close an issue with a GET.
-    # We pass an empty string for the data so it is a POST rather than a GET.
-    data = [("description", self.description),]
-    ctype, body = upload.EncodeMultipartFormData(data, [])
-    rpc_server.Send('/' + self.GetRietveldIssue() + '/close', body, ctype)
-
-  def _TrackerIssueSetting(self):
-    """Returns the git setting that stores the Tracker issue."""
-    return 'branch.%s.googlecodeissue' % self.GetBranch()
-
-  def _RietveldIssueSetting(self):
-    """Returns the git setting that stores the Rietveld issue."""
-    return 'branch.%s.rietveldissue' % self.GetBranch()
-
-  def _PatchsetSetting(self):
-    """Returns the git setting that stores the most recent Rietveld patchset."""
-    return 'branch.%s.rietveldpatchset' % self.GetBranch()
 
 
 def GetCodereviewSettingsInteractively():
@@ -385,7 +54,27 @@ def GetCodereviewSettingsInteractively():
   if not server and not newserver:
     newserver = DEFAULT_SERVER
   if newserver and newserver != server:
-    RunGit(['config', 'rietveld.server', newserver])
+    cl_settings.RunGit(['config', 'rietveld.server', newserver])
+
+  tracker_server = settings.GetTrackerServer(error_ok=True)
+  prompt = 'Allura server'
+  prompt += ' [%s]' % tracker_server
+  newtracker = raw_input(prompt + ': ')
+  while not tracker_server and not newtracker:
+    prompt = 'You must provide the address of the Allura tracker server: '
+    newtracker = raw_input(prompt)
+  if newtracker and newtracker != tracker_server:
+    cl_settings.RunGit(['config', 'allura.tracker', newtracker])
+
+  token = settings.GetToken(error_ok=True)
+  prompt = 'Allura bearer token (see https://sourceforge.net/auth/oauth/)'
+  prompt += ' [%s]' % token
+  newtoken = raw_input(prompt + ': ')
+  while not token and not newtoken:
+    prompt = 'You must provide a bearer token to authenticate: '
+    newtoken = raw_input(prompt)
+  if newtoken and newtoken != token:
+    cl_settings.RunGit(['config', 'allura.token', newtoken])
 
   def SetProperty(initial, caption, name):
     prompt = caption
@@ -393,18 +82,11 @@ def GetCodereviewSettingsInteractively():
       prompt += ' ("x" to clear) [%s]' % initial
     new_val = raw_input(prompt + ': ')
     if new_val == 'x':
-      RunGit(['config', '--unset-all', 'rietveld.' + name], error_ok=True)
+      cl_settings.RunGit(['config', '--unset-all', 'rietveld.' + name], error_ok=True)
     elif new_val and new_val != initial:
-      RunGit(['config', 'rietveld.' + name, new_val])
+      cl_settings.RunGit(['config', 'rietveld.' + name, new_val])
 
   SetProperty(settings.GetCCList(), 'CC list', 'cc')
-  SetProperty(settings.GetTreeStatusUrl(error_ok=True), 'Tree status URL',
-              'tree-status-url')
-  SetProperty(settings.GetViewVCUrl(), 'ViewVC URL', 'viewvc-url')
-
-  # TODO: configure a default branch to diff against, rather than this
-  # svn-based hackery.
-
 
 def LoadCodereviewSettingsFromFile(file):
   """Parse a codereview.settings file."""
@@ -421,9 +103,9 @@ def LoadCodereviewSettingsFromFile(file):
   def SetProperty(name, setting, unset_error_ok=False):
     fullname = 'rietveld.' + name
     if setting in settings:
-      RunGit(['config', fullname, settings[setting]])
+      cl_settings.RunGit(['config', fullname, settings[setting]])
     else:
-      RunGit(['config', '--unset-all', fullname], error_ok=unset_error_ok)
+      cl_settings.RunGit(['config', '--unset-all', fullname], error_ok=unset_error_ok)
 
   SetProperty('server', 'CODE_REVIEW_SERVER')
   # Only server setting is required. Other settings can be absent.
@@ -480,14 +162,14 @@ def CmdStatus(args):
   show_branches = not options.field
 
   if show_branches:
-    branches = RunGit(['for-each-ref', '--format=%(refname)', 'refs/heads'])
+    branches = cl_settings.RunGit(['for-each-ref', '--format=%(refname)', 'refs/heads'])
     if branches:
       print 'Branches associated with reviews:'
       for branch in sorted(branches.splitlines()):
-        cl = Changelist(branchref=branch)
+        cl = cl_settings.Changelist(branchref=branch)
         print "  %10s: %s" % (cl.GetBranch(), cl.GetRietveldIssue())
 
-  cl = Changelist()
+  cl = cl_settings.Changelist()
   if options.field:
     if options.field.startswith('desc'):
       print cl.GetDescription()
@@ -517,7 +199,7 @@ def CmdIssue(args):
                         'Pass issue number 0 to clear the current issue.')
   (options, args) = parser.parse_args(args)
 
-  cl = Changelist()
+  cl = cl_settings.Changelist()
   if len(args) > 0:
     cl.SetRietveldIssue(int(args[0]))
   print 'Rietveld issue:', cl.GetRietveldIssue(), '(%s)' % cl.GetRietveldURL()
@@ -550,7 +232,7 @@ def RunHook(hook, upstream_branch='origin', error_ok=False):
   hook = '%s/%s' % (settings.GetRoot(), hook)
   if not os.path.exists(hook):
     return
-  output = RunCommand([hook, upstream_branch], error_ok).strip()
+  output = cl_settings.RunCommand([hook, upstream_branch], error_ok).strip()
   if output != '':
     print output
 
@@ -561,7 +243,7 @@ def CmdPresubmit(args):
       usage='git cl presubmit [options]')
   (options, args) = parser.parse_args(args)
 
-  if RunGit(['diff-index', 'HEAD']):
+  if cl_settings.RunGit(['diff-index', 'HEAD']):
     print 'Cannot presubmit with a dirty tree.  You must commit locally first.'
     return 1
 
@@ -587,11 +269,11 @@ def CmdUpload(args):
     action="store_true", dest="no_code_issue")
   (options, args) = parser.parse_args(args)
 
-  if RunGit(['diff-index', 'HEAD']):
+  if cl_settings.RunGit(['diff-index', 'HEAD']):
     print 'Cannot upload with a dirty tree.  You must commit locally first.'
     return 1
 
-  cl = Changelist()
+  cl = cl_settings.Changelist()
   if args:
     base_branch = args[0]
   else:
@@ -619,11 +301,11 @@ def CmdUpload(args):
     upload_args.extend(['--message', options.message])
   if options.send_mail:
     if not options.reviewers:
-      DieWithError("Must specify reviewers to send email.")
+      settings.DieWithError("Must specify reviewers to send email.")
     upload_args.append('--send_mail')
   if cl.GetRietveldIssue():
     upload_args.extend(['--issue', cl.GetRietveldIssue()])
-    print ("This branch is associated with issue %s. "
+    print ("This branch is associated with Rietveld issue %s. "
            "Adding patch to that issue." % cl.GetRietveldIssue())
     prompt = "Message describing this patch set: "
     desc = options.message or raw_input(prompt).strip()
@@ -637,7 +319,7 @@ def CmdUpload(args):
       log_args = [args[0] + '..' + args[1]]
     else:
       log_args = args[:]  # Hope for the best!
-    desc = RunGit(['log', '--pretty=format:%s\n\n%b'] + log_args)
+    desc = cl_settings.RunGit(['log', '--pretty=format:%s\n\n%b'] + log_args)
     initial_text = """# Enter a description of the change.
 # This will be displayed on the codereview site.
 # The first line will also be used as the subject of the review."""
@@ -645,6 +327,7 @@ def CmdUpload(args):
     if not desc:
       print "Description empty; aborting."
       return 1
+  # TODO: dies when desc is empty
   subject = desc.splitlines()[0]
   upload_args.extend(['--title', subject])
   upload_args.extend(['--message', desc])
@@ -654,6 +337,8 @@ def CmdUpload(args):
   cl.SetPatchset(patchset)
   if not options.no_code_issue:
     issueId = cl.GetTrackerIssue()
+    # print(issue, patchset, subject, desc, issueId)
+    # sys.exit()
     issueId = projecthosting_upload.upload(issue, patchset, subject, desc, issueId)
     cl.SetTrackerIssue(issueId)
 
@@ -675,7 +360,7 @@ def CmdDCommit(args):
                          "even without uploading for review")
   (options, args) = parser.parse_args(args)
 
-  cl = Changelist()
+  cl = cl_settings.Changelist()
 
   if not args:
     # Default to merging against our best guess of the upstream branch.
@@ -683,13 +368,13 @@ def CmdDCommit(args):
 
   base_branch = args[0]
 
-  if RunGit(['diff-index', 'HEAD']):
+  if cl_settings.RunGit(['diff-index', 'HEAD']):
     print 'Cannot dcommit with a dirty tree.  You must commit locally first.'
     return 1
 
   # This rev-list syntax means "show all commits not in my branch that
   # are in base_branch".
-  upstream_commits = RunGit(['rev-list', '^' + cl.GetBranchRef(),
+  upstream_commits = cl_settings.RunGit(['rev-list', '^' + cl.GetBranchRef(),
                              base_branch]).splitlines()
   if upstream_commits:
     print ('Base branch "%s" has %d commits '
@@ -753,14 +438,14 @@ def CmdDCommit(args):
   # dcommitting that.
   MERGE_BRANCH = 'git-cl-commit'
   # Delete the merge branch if it already exists.
-  if RunGit(['show-ref', '--quiet', '--verify', 'refs/heads/' + MERGE_BRANCH],
+  if cl_settings.RunGit(['show-ref', '--quiet', '--verify', 'refs/heads/' + MERGE_BRANCH],
             exit_code=True) == 0:
-    RunGit(['branch', '-D', MERGE_BRANCH])
+    cl_settings.RunGit(['branch', '-D', MERGE_BRANCH])
 
   # We might be in a directory that's present in this branch but not in the
   # trunk.  Move up to the top of the tree so that git commands that expect a
   # valid CWD won't fail after we check out the merge branch.
-  rel_base_path = RunGit(['rev-parse', '--show-cdup']).strip()
+  rel_base_path = cl_settings.RunGit(['rev-parse', '--show-cdup']).strip()
   if rel_base_path:
     os.chdir(rel_base_path)
 
@@ -768,15 +453,15 @@ def CmdDCommit(args):
   # We wrap in a try...finally block so if anything goes wrong,
   # we clean up the branches.
   try:
-    RunGit(['checkout', '-q', '-b', MERGE_BRANCH, base_branch])
-    RunGit(['merge', '--squash', cl.GetBranchRef()])
-    RunGit(['commit', '-m', description])
+    cl_settings.RunGit(['checkout', '-q', '-b', MERGE_BRANCH, base_branch])
+    cl_settings.RunGit(['merge', '--squash', cl.GetBranchRef()])
+    cl_settings.RunGit(['commit', '-m', description])
     # dcommit the merge branch.
-    output = RunGit(['svn', 'dcommit', '--no-rebase'])
+    output = cl_settings.RunGit(['svn', 'dcommit', '--no-rebase'])
   finally:
     # And then swap back to the original branch and clean up.
-    RunGit(['checkout', '-q', cl.GetBranch()])
-    RunGit(['branch', '-D', MERGE_BRANCH])
+    cl_settings.RunGit(['checkout', '-q', cl.GetBranch()])
+    cl_settings.RunGit(['branch', '-D', MERGE_BRANCH])
 
   if cl.has_RietveldIssue and output.find("Committed r") != -1:
     print "Closing issue (you may be prompted for your codereview password)..."
@@ -837,12 +522,12 @@ def CmdPatch(args):
 
   if options.newbranch:
     if options.force:
-      RunGit(['branch', '-D', options.newbranch], error_ok=True)
-    RunGit(['checkout', '-b', options.newbranch])
+      cl_settings.RunGit(['branch', '-D', options.newbranch], error_ok=True)
+    cl_settings.RunGit(['checkout', '-b', options.newbranch])
 
   # Switch up to the top-level directory, if necessary, in preparation for
   # applying the patch.
-  top = RunGit(['rev-parse', '--show-cdup']).strip()
+  top = cl_settings.RunGit(['rev-parse', '--show-cdup']).strip()
   if top:
     os.chdir(top)
 
@@ -865,8 +550,8 @@ def CmdPatch(args):
 
   # If we had an issue, commit the current state and register the issue.
   if not options.nocommit:
-    RunGit(['commit', '-m', 'patch from issue %s' % issue])
-    cl = Changelist()
+    cl_settings.RunGit(['commit', '-m', 'patch from issue %s' % issue])
+    cl = cl_settings.Changelist()
     cl.SetRietveldIssue(issue)
     print "Committed patch."
   else:
@@ -875,7 +560,7 @@ def CmdPatch(args):
 def CmdRebase(args):
   # Provide a wrapper for git svn rebase to help avoid accidental
   # git svn dcommit.
-  RunGit(['svn', 'rebase'], redirect_stdout=False)
+  cl_settings.RunGit(['svn', 'rebase'], redirect_stdout=False)
 
 def GetTreeStatus():
   """Fetches the tree status and returns either 'open', 'closed',
@@ -903,7 +588,7 @@ def CmdTreeStatus(args):
   return 0
 
 def CmdUpstream(args):
-  cl = Changelist()
+  cl = cl_settings.Changelist()
   print cl.GetUpstreamBranch()
 
 COMMANDS = [

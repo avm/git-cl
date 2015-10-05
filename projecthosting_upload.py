@@ -4,6 +4,8 @@ import sys
 import re
 import os.path
 
+import allura_issues
+
 # API docs:
 #   http://code.google.com/p/support/wiki/IssueTrackerAPIPython
 import gdata.projecthosting.client
@@ -30,11 +32,6 @@ class PatchBot():
 
     username = None
     password = None
-
-    def __init__(self):
-        # both of these bail if they fail
-        self.get_credentials()
-        self.login()
 
     def get_credentials(self):
         # TODO: can we use the coderview cookie for this?
@@ -151,29 +148,31 @@ class PatchBot():
         return int(info)
 
     def upload(self, issue, patchset, subject="", description="", issue_id=None):
+        # NB.  issue is the Rietveld issue; issue_id is the google/Allura issue
         if not subject:
             subject = "new patch"
         description = description + "\n\n" + "http://codereview.appspot.com/" + issue
         # update or create?
         if not issue_id:
+            # Looks for issue number in the description
             issue_id = self.find_fix_issue_id(subject+' '+description)
         if issue_id:
             print "This has been identified with code.google.com issue "+str(issue_id)+"."
             correct = raw_input("Is this correct? [y/n (y)]")
             if correct != 'n' :
-                issue_id = self.update_issue(issue_id, description)
+                issue_id = allura_issues.update_issue(issue_id, description)
             else :
                 issue_id = self.query_user(issue_id)
                 if issue_id > 0 :
-                    issue_id = self.update_issue(issue_id, description)
+                    issue_id = allura_issues.update_issue(issue_id, description)
                 else :
-                    issue_id = self.create_issue(subject, description)
+                    issue_id = allura_issues.create_issue(subject, description)
         else:
             issue_id = self.query_user(issue_id)
             if issue_id > 0 :
-                issue_id = self.update_issue(issue_id, description)
+                issue_id = allura_issues.update_issue(issue_id, description)
             else :
-                issue_id = self.create_issue(subject, description)
+                issue_id = allura_issues.create_issue(subject, description)
         return issue_id
 
 
@@ -186,15 +185,4 @@ def upload(issue, patchset, subject="", description="", issue_id=None):
     else:
         print "Problem with the tracker issue"
     return status
-
-def test_find_number():
-    patchy = PatchBot()
-    print patchy.find_fix_issue_id("Fix 123")
-    print patchy.find_fix_issue_id("(Issue 123)")
-    print patchy.find_fix_issue_id("(123)")
-
-##test_find_number()
-#upload("rietveld_issue_id", None, "test issue", "blah")
-#upload("rietveld_issue_id", None, "test fix 1", "blah")
-
 
