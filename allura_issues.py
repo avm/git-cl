@@ -58,6 +58,19 @@ def update_issue(allura_issue_id, description):
   allura_server = settings.GetTrackerServer()
   allura_api = add_api_string(allura_server)
 
+  # Set patch status to new
+  data = {
+    'access_token': BEARER_TOKEN,
+    'ticket_form.custom_fields._patch': 'new',
+  }
+  data_encoded = urllib.urlencode(data)
+
+  filehandle = urllib.urlopen (allura_api + allura_issue_id + "/save", data_encoded)
+  if filehandle.getcode() != 200:
+    print "Problem setting patch status for Allura issue"
+    sys.exit(1)
+
+  # Now get the thread ID so we can add a note to the correct thread
   filehandle = urllib.urlopen (allura_api + str(allura_issue_id))
   issue_data = filehandle.read()
   thread_id = get_thread_ID(issue_data)
