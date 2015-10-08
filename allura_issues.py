@@ -65,7 +65,7 @@ def update_issue(allura_issue_id, description):
   }
   data_encoded = urllib.urlencode(data)
 
-  filehandle = urllib.urlopen (allura_api + allura_issue_id + "/save", data_encoded)
+  filehandle = urllib.urlopen (allura_api + str(allura_issue_id) + "/save", data_encoded)
   if filehandle.getcode() != 200:
     print "Problem setting patch status for Allura issue"
     sys.exit(1)
