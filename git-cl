@@ -265,7 +265,7 @@ def CmdUpload(args):
   parser.add_option('--send-mail', action='store_true',
                     help='send email to reviewer immediately')
   parser.add_option("-n", "--no-code-issue",
-    help="do not upload to code.google.com",
+    help="do not upload to issue tracker",
     action="store_true", dest="no_code_issue")
   (options, args) = parser.parse_args(args)
 

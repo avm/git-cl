@@ -157,7 +157,7 @@ class PatchBot():
             # Looks for issue number in the description
             issue_id = self.find_fix_issue_id(subject+' '+description)
         if issue_id:
-            print "This has been identified with code.google.com issue "+str(issue_id)+"."
+            print "This has been identified with issue "+str(issue_id)+"."
             correct = raw_input("Is this correct? [y/n (y)]")
             if correct != 'n' :
                 issue_id = allura_issues.update_issue(issue_id, description)
