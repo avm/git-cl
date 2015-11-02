@@ -331,14 +331,13 @@ def CmdUpload(args):
   subject = desc.splitlines()[0]
   upload_args.extend(['--title', subject])
   upload_args.extend(['--message', desc])
+  upload_args.extend(['--oauth2'])
   issue, patchset = upload.RealMain(['upload'] + upload_args + args)
   if not cl.GetRietveldIssue():
     cl.SetRietveldIssue(issue)
   cl.SetPatchset(patchset)
   if not options.no_code_issue:
     issueId = cl.GetTrackerIssue()
-    # print(issue, patchset, subject, desc, issueId)
-    # sys.exit()
     issueId = projecthosting_upload.upload(issue, patchset, subject, desc, issueId)
     cl.SetTrackerIssue(issueId)
 
