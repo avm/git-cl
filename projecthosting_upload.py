@@ -137,9 +137,9 @@ class PatchBot():
         return issue_id
 
     def query_user(self, issue = None) :
-        query_string1 = "We were not able to associate this patch with a google tracker issue." if issue == None else str(issue)+" will not be used as a google tracker number."
+        query_string1 = "We were not able to associate this patch with a tracker issue." if issue == None else str(issue)+" will not be used as a tracker number."
         print query_string1
-        info = raw_input("Please enter a valid google tracker issue number\n"
+        info = raw_input("Please enter a valid tracker issue number\n"
                          "(or enter nothing to create a new issue): ")
         while (info != '') and (not string_is_number(info)) :
             info = raw_input("This is an invalid entry.  Please enter either an issue number (just digits, no spaces) or nothing to create an issue: ")
@@ -148,7 +148,7 @@ class PatchBot():
         return int(info)
 
     def upload(self, issue, patchset, subject="", description="", issue_id=None):
-        # NB.  issue is the Rietveld issue; issue_id is the google/Allura issue
+        # NB.  issue is the Rietveld issue; issue_id is the Allura issue
         if not subject:
             subject = "new patch"
         description = description + "\n\n" + "http://codereview.appspot.com/" + issue
