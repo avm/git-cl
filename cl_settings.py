@@ -5,6 +5,8 @@
 import os
 import sys
 import subprocess
+import urllib2
+import textwrap
 
 class Settings:
   def __init__(self):
@@ -350,6 +352,9 @@ def ShortBranchName(branch):
 def RietveldURL(issue):
   """Returns the Rietveld URL for a particular issue."""
   return 'https://%s/%s' % (settings.GetServer(), issue)
+
+def TrackerURL(issue):
+  return 'https://sourceforge.net/p/testlilyissues/issues/%s/' % issue
 
 def DieWithError(message):
   print >>sys.stderr, message

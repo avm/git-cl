@@ -167,7 +167,7 @@ def CmdStatus(args):
       print 'Branches associated with reviews:'
       for branch in sorted(branches.splitlines()):
         cl = cl_settings.Changelist(branchref=branch)
-        print "  %10s: %s" % (cl.GetBranch(), cl.GetRietveldIssue())
+        print "  %20s: %s" % (cl.GetBranch(), cl.GetRietveldIssue())
 
   cl = cl_settings.Changelist()
   if options.field:
