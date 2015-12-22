@@ -24,7 +24,7 @@ def create_issue(subject, description):
   data_encoded = urllib.urlencode(data)
   allura_result = urllib.urlopen (allura_api + "/new", data_encoded)
   if allura_result.getcode() == 200:
-    print 'Ticket created at: %s' % allura_result.geturl()
+    print 'Ticket created at: %s' % allura_result.geturl().replace("/rest","")
   else:
     print 'Error code %s' % (allura_result.getcode())
     sys.exit(1)
