@@ -27,6 +27,8 @@ def create_issue(subject, description):
     print 'Ticket created at: %s' % allura_result.geturl().replace("/rest","")
   else:
     print 'Error code %s' % (allura_result.getcode())
+    print 'Failed URL was %s' % allura_api + "/new"
+    print 'Failed data was %s' % data_encoded
     sys.exit(1)
   issue_id = get_issue_number(allura_result.geturl())
 
@@ -105,7 +107,7 @@ def add_api_string(allura_server):
   p_pos = allura_server.find('/p/')
   if p_pos < 1:
     print 'Allura server has unxepected format: expect it to contain /p/ in the URL'
-    print 'Please run gir cl config'
+    print 'Please run git cl config'
     sys.exit(1)
   api_server = allura_server[0:p_pos]
   api_server += '/rest'
