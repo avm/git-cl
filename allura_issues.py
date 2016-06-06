@@ -63,6 +63,7 @@ def update_issue(allura_issue_id, description):
   # Set patch status to new
   data = {
     'access_token': BEARER_TOKEN,
+    'ticket_form.status': 'Started',
     'ticket_form.custom_fields._patch': 'new',
   }
   data_encoded = urllib.urlencode(data)
