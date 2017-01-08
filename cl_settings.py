@@ -286,7 +286,7 @@ or verify this branch is set up to track another (via the --track argument to
 
   def _TrackerIssueSetting(self):
     """Returns the git setting that stores the Tracker issue."""
-    return 'branch.%s.googlecodeissue' % self.GetBranch()
+    return 'branch.%s.trackerissue' % self.GetBranch()
 
   def _RietveldIssueSetting(self):
     """Returns the git setting that stores the Rietveld issue."""
