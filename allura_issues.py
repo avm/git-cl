@@ -2,7 +2,7 @@
 # Integrates git-cl with the Allura issue tracking tool
 # Phil Holmes
 
-import urllib
+import requests
 import cl_settings
 import sys
 
@@ -21,24 +21,23 @@ def create_issue(subject, description):
     'ticket_form.custom_fields._patch': 'new',
     'ticket_form.custom_fields._type': 'Enhancement',
   }
-  data_encoded = urllib.urlencode(data)
-  allura_result = urllib.urlopen (allura_api + "/new", data_encoded)
-  if allura_result.getcode() == 200:
-    print 'Ticket created at: %s' % allura_result.geturl().replace("/rest","")
+  allura_result = requests.post(allura_api + "/new", data=data)
+  if allura_result.ok:
+    print 'Ticket created at: %s' % allura_result.url.replace("/rest","")
   else:
-    print 'Error code %s' % (allura_result.getcode())
+    print 'Error code %s' % allura_result.status_code
     print 'Failed URL was %s' % allura_api + "/new"
-    print 'Failed data was %s' % data_encoded
+    print 'Failed data was %s' % data
     sys.exit(1)
-  issue_id = get_issue_number(allura_result.geturl())
+  issue_id = get_issue_number(allura_result.url)
 
   # Now get text of issue back, to locate the originator
-  filehandle = urllib.urlopen (allura_api + issue_id)
-  if filehandle.getcode() != 200:
+  filehandle = requests.get(allura_api + issue_id)
+  if not filehandle.ok:
     print "Problem getting originator for Allura issue"
     sys.exit(1)
 
-  issue_str = filehandle.read()
+  issue_str = filehandle.content
   originator = get_reporter(issue_str)
 
   # Now set the owner to the originator
@@ -46,10 +45,9 @@ def create_issue(subject, description):
     'access_token': BEARER_TOKEN,
     'ticket_form.assigned_to': originator,
   }
-  data_encoded = urllib.urlencode(data)
 
-  filehandle = urllib.urlopen (allura_api + issue_id + "/save", data_encoded)
-  if filehandle.getcode() != 200:
+  filehandle = requests.post(allura_api + issue_id + "/save", data=data)
+  if not filehandle.ok:
     print "Problem setting originator for Allura issue"
     sys.exit(1)
 
@@ -66,33 +64,31 @@ def update_issue(allura_issue_id, description):
     'ticket_form.status': 'Started',
     'ticket_form.custom_fields._patch': 'new',
   }
-  data_encoded = urllib.urlencode(data)
 
-  filehandle = urllib.urlopen (allura_api + str(allura_issue_id) + "/save", data_encoded)
-  if filehandle.getcode() != 200:
+  filehandle = requests.post(allura_api + str(allura_issue_id) + "/save", data=data)
+  if not filehandle.ok:
     print "Problem setting patch status for Allura issue"
     sys.exit(1)
 
   # Now get the thread ID so we can add a note to the correct thread
-  filehandle = urllib.urlopen (allura_api + str(allura_issue_id))
-  issue_data = filehandle.read()
+  filehandle = requests.get(allura_api + str(allura_issue_id))
+  issue_data = filehandle.content
   thread_id = get_thread_ID(issue_data)
   data = {
     'access_token': BEARER_TOKEN,
     'text': description,
   }
 
-  issue_id = get_issue_number(filehandle.geturl())
+  issue_id = get_issue_number(filehandle.url)
 
-  data_encoded = urllib.urlencode(data)
   allura_url = allura_api + "/_discuss/thread/"
   allura_url += thread_id + "/new"
 
-  allura_result = urllib.urlopen (allura_url, data_encoded)
-  if allura_result.getcode() == 200:
-    print 'Ticket %s updated' % allura_result.geturl()
+  allura_result = requests.post(allura_url, data=data)
+  if allura_result.ok:
+    print 'Ticket %s updated' % allura_result.url
   else:
-    print 'Update attempt returns error code %s' % (allura_result.getcode())
+    print 'Update attempt returns error code %s' % (allura_result.status_code)
     sys.exit(1)
   return issue_id
 
